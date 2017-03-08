@@ -51,12 +51,14 @@ class JacmultifilefolderPlugin extends Plugin
         }
         //load up the plugin configs
         $this->jaccmsConfig = $this->config->get('plugins.jacmultifilefolder');
-
+        $this->siblings = array();
+        
         $this->enable([
-                //'onPagesInitialized' => ['onPagesInitialized', 0],  //too late, cache is done..
+                'onPagesInitialized' => ['onPagesInitialized', 0],  //too late, cache is done..
                 //'onFolderProcessed' =>  ['onFolderProcessed', 0],   //don't undersand fireing pattern
                 'onPageProcessed' =>  ['onPageProcessed', 0],         //get "file" siblings of the page.
             ]);
+            
     }
 // =========================================================================
 // onPagesInitialized() NOT USED
@@ -65,9 +67,11 @@ class JacmultifilefolderPlugin extends Plugin
      * Grav Pages all loaded
      */
     public function onPagesInitialized()
-    {  
+    { 
+        $this->addPagesFromSiblings();
         return;
     }
+
 // =========================================================================
 // onFolderProcessed() NOT USED
 // =========================================================================
@@ -90,8 +94,8 @@ class JacmultifilefolderPlugin extends Plugin
         //jacmgr made $this->grav['pages']->instances var public in Pages.php
         //no way to get instances back into Pages.php, so...did that..sorry.
         //maybe if pass in the event?
-        $this->jaccms_instances = $this->grav['pages']->instances;  
-        $this->jaccms_children = $this->grav['pages']->children;
+        //$this->jaccms_instances = $this->grav['pages']->instances();  
+        //$this->jaccms_children = $this->grav['pages']->children;
         //Alternatively at them to the event in Pages ?? did not work???
         //$this->jaccms_instances = $event['instances'];  
         //$this->jaccms_children = $event['children']; 
@@ -99,11 +103,11 @@ class JacmultifilefolderPlugin extends Plugin
         //get siblings, if any for this page
         $file = $page->path().'/'.$page->name();
         $siblings = $this->buildSiblingList($file);
-        //add siblings to instances
         if($siblings != null){
-          $this->addSiblingsToInstances($siblings);    
-          $this->grav['pages']->instances = $this->jaccms_instances;
-          $this->grav['pages']->children = $this->jaccms_children;      
+          
+          //echo '<pre>siblings not null'; print_r($siblings); echo '</pre>';
+          $this->siblings = array_merge((array)$this->siblings, $siblings);
+          //echo '<pre>full sibling'; print_r($this->siblings); echo '</pre>';
         }
     }
 // =========================================================================
@@ -158,8 +162,41 @@ class JacmultifilefolderPlugin extends Plugin
       return $siblings;
     } 
     /**
+     *
+     */
+    public function addPagesFromSiblings(){
+      
+        foreach ($this->siblings as $filename => $FileObjectSPL)
+        {
+          $instances = $this->grav['pages']->instances();
+          $path_parts = pathinfo($filename);
+          //$mastersibling = $this->grav['pages']->instances();
+          //Multi File Folder "VIRTUAL" (Fake) DIRECTORY IS FILE NAME to be compatible with grav        
+          $MFFdirectory = $path_parts['dirname'].'/'.$path_parts['filename'];
+          
+          $page = new Page;
+          $page->init($FileObjectSPL);
+          $page->path($MFFdirectory );
+          // echo '<br>ps '.$page->slug();
+          $parent = null;
+          if($instances[$path_parts['dirname']]){ 
+            $parent = $instances[$path_parts['dirname']];
+          }
+          if ($parent) {
+              $page->parent($parent);
+          }
+          $route = $parent->route().'/'.$page->slug();
+          //set flag so other plugins could check if this is a MFF page
+          $page->jaccms = true;
+          //add the page into the pages repository
+          $this->grav['pages']->addPage($page, $route);        
+        }
+    }
+    /**
     *
+     HERE FOR REFERENCE >......
     *  addSiblingsToInstances
+    *  used by the onfolderprocessed version.......delete.....
     */
     protected function addSiblingsToInstances($siblings)
     {
@@ -183,7 +220,7 @@ class JacmultifilefolderPlugin extends Plugin
           echo $path_parts['extension'], "\n"; // md
           echo $path_parts['filename'], "\n";  // homepagefile   
           */
-
+//can easily get master sibling from existing page
           $page = new Page;
           //sets flag so plugins know this is a NON-GRAV FOLDER PAGE........
           //we are allowing the MultiFIleFolder method to exist.
